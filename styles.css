@@ -1224,17 +1224,6 @@ body:has(.service-info-dialog[open]) {overflow:hidden}
 .concern-list li {padding:0;border:0;display:flex}
 .service-info-link {width:100%;min-height:64px;padding:16px 18px;border:1px solid #536456;border-radius:12px;background:#536456;color:#fff;text-align:center;line-height:1.4;text-decoration:none}
 .service-info-link:hover {background:#455448;border-color:#455448;text-decoration:none}
-.contact-section {background:#edf0e9;color:var(--ink)}
-.contact-copy .eyebrow,.contact-card span {color:var(--sage-dark)}
-.contact-copy>p:not(.eyebrow),.contact-card small {color:var(--muted)}
-.contact-card,.contact-card>div {border-color:#cbd3c8}
-.contact-copy .button:not(.button--ghost-light),.contact-copy .button--ghost-light {background:transparent;color:var(--ink);border-color:var(--sage-dark)}
-.contact-copy .button:hover {background:#dfe6db;color:var(--ink)}
-.urgent-support {background:var(--cream);color:var(--ink)}
-.urgent-grid p,.urgent-card span,.urgent-card small {color:var(--muted)}
-.urgent-card {background:var(--paper);border-color:var(--line)}
-.urgent-card a {color:var(--sage-dark)}
-.support-bar {background:#edf0e9;color:var(--ink)}
 .service-info-link:focus-visible {outline:3px solid var(--gold);outline-offset:4px;text-decoration:none}
 @media(max-width:430px){.concern-list{grid-template-columns:1fr}.service-info-link{min-height:52px}}
 
