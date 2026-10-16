@@ -1226,6 +1226,7 @@ body:has(.service-info-dialog[open]) {overflow:hidden}
 .service-info-link:hover {background:#455448;border-color:#455448;text-decoration:none}
 .service-info-link:focus-visible {outline:3px solid var(--gold);outline-offset:4px;text-decoration:none}
 @media(max-width:430px){.concern-list{grid-template-columns:1fr}.service-info-link{min-height:52px}}
+img[src="assets/logo.png"] {height:auto;object-fit:contain}
 
 /* Connected client-review pages */
 .primary-nav a[aria-current="page"]{text-decoration:underline;text-underline-offset:6px}
