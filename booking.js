@@ -40,16 +40,20 @@ const booking = { step: 1, format: '', session: '', date: '', time: '' };
 const panels = [...document.querySelectorAll('.booking-panel')];
 const progress = [...document.querySelectorAll('.booking-progress li')];
 const paymentService = new BookingPaymentService(new PreviewPaymentGateway());
-// TODO: Replace preview availability with server-backed availability and temporary slot holds.
+// Read-only calendar availability on hosted pages. Booking/payment remain a preview.
+const LIVE_AVAILABILITY = typeof location !== 'undefined' && location.protocol === 'https:' && ['kaylinnelcounselling.co.za','www.kaylinnelcounselling.co.za'].includes(location.hostname);
+const AVAILABILITY_API = 'https://kaylin-booking-api.dawvathy.workers.dev/api/availability';
+let availabilityRequest = 0, availabilityController;
+if (LIVE_AVAILABILITY) $('#availabilityIntro').textContent = 'Select a date to check current calendar availability. Appointments allow 60 minutes, with 10 minutes between sessions. Times are South African time. Selecting a time does not reserve it.';
 const formatDate = new Intl.DateTimeFormat('en-ZA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Johannesburg' });
 const shortDay = new Intl.DateTimeFormat('en-ZA', { weekday: 'short', timeZone: 'Africa/Johannesburg' });
 const shortMonth = new Intl.DateTimeFormat('en-ZA', { month: 'short', timeZone: 'Africa/Johannesburg' });
 const todayParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
 const part = type => todayParts.find(p => p.type === type).value;
 const today = new Date(`${part('year')}-${part('month')}-${part('day')}T10:00:00Z`);
-const saturdayAnchor = Date.UTC(2026, 9, 10, 10);
+const saturdayAnchor = Date.UTC(2026, 9, 17, 10);
 function summaryRows() {
-  return [['Session', sessions[booking.session]?.title], ['Format', booking.format], ['Date', booking.date], ['Time', booking.time ? `${booking.time} SAST` : ''], ['Duration', booking.session ? '45–60 minutes' : ''], ['Fee', sessions[booking.session]?.fee]].filter(([,value]) => value);
+  return [['Session', sessions[booking.session]?.title], ['Format', booking.format], ['Date', booking.date], ['Time', booking.time ? `${booking.time} SAST` : ''], ['Duration', booking.session ? (LIVE_AVAILABILITY ? '60-minute appointment' : '45–60 minutes') : ''], ['Fee', sessions[booking.session]?.fee]].filter(([,value]) => value);
 }
 function fillSummary(target) {
   target.replaceChildren();
@@ -90,11 +94,12 @@ for (let offset=1, count=0; count<12; offset++) {
   button.innerHTML = `<span>${shortDay.format(date)}</span><strong>${date.getUTCDate()}</strong><small>${unavailable ? 'Closed' : shortMonth.format(date)}</small>`;
   button.addEventListener('click', () => {
     $('#dateStrip').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-    booking.date = formatDate.format(date); booking.time = ''; invalidateAcknowledgement(); updateSummary(); makeTimes(day===6);
+    booking.date = formatDate.format(date); booking.time = ''; booking.slotStart = ''; booking.slotEnd = ''; invalidateAcknowledgement(); updateSummary(); makeTimes(day===6, date);
   });
   $('#dateStrip').append(button); count++;
 }
-function makeTimes(saturday) {
+function makeTimes(saturday, date) {
+  if (LIVE_AVAILABILITY) { loadLiveTimes(date); return; }
   $('#timeGrid').replaceChildren();
   (saturday ? ['09:00','10:00','11:00','12:00'] : ['09:00','10:30','12:00','14:00','15:30','17:00','18:00']).forEach(time => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'time-button'; button.textContent = time; button.setAttribute('aria-pressed', 'false');
@@ -103,6 +108,44 @@ function makeTimes(saturday) {
       booking.time = time; invalidateAcknowledgement(); updateSummary();
     }); $('#timeGrid').append(button);
   });
+}
+async function loadLiveTimes(date) {
+  const requestId = ++availabilityRequest;
+  availabilityController?.abort();
+  const controller = new AbortController(); availabilityController = controller;
+  const grid = $('#timeGrid'); grid.replaceChildren(); grid.setAttribute('aria-busy','true');
+  const status = document.createElement('p'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+  status.textContent = 'Checking available times…'; grid.append(status);
+  const dateISO = date.toISOString().slice(0,10);
+  const timeout = setTimeout(() => controller.abort(),15000);
+  try {
+    const response = await fetch(AVAILABILITY_API+'?date='+encodeURIComponent(dateISO), {signal:controller.signal,cache:'no-store',credentials:'omit'});
+    if (!response.ok) throw new Error('Availability unavailable');
+    const data = await response.json();
+    if (data.date !== dateISO || data.timeZone !== 'Africa/Johannesburg' || data.durationMinutes !== 60 || data.breakMinutes !== 10 || !Array.isArray(data.slots) || data.slots.length > 16) throw new Error('Invalid availability');
+    const timeFormat = new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Africa/Johannesburg'});
+    for (const slot of data.slots) {
+      if (!Number.isFinite(Date.parse(slot.start)) || Date.parse(slot.end)-Date.parse(slot.start) !== 3600000 || new Date(Date.parse(slot.start)+7200000).toISOString().slice(0,10) !== dateISO) throw new Error('Invalid slot');
+    }
+    if (requestId !== availabilityRequest) return;
+    grid.replaceChildren();
+    if (!data.slots.length) { status.textContent = 'No available times on this date. Please choose another date.'; grid.append(status); return; }
+    for (const slot of data.slots) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'time-button';
+      const label = timeFormat.format(new Date(slot.start)); button.textContent = label; button.setAttribute('aria-pressed','false');
+      button.addEventListener('click', () => {
+        grid.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed',String(b === button)));
+        booking.time = label; booking.slotStart = slot.start; booking.slotEnd = slot.end; invalidateAcknowledgement(); updateSummary();
+      });
+      grid.append(button);
+    }
+  } catch {
+    if (requestId !== availabilityRequest) return;
+    grid.replaceChildren(); status.textContent = 'We could not check available times. Please select the date again, or contact the practice on WhatsApp.'; grid.append(status);
+  } finally {
+    clearTimeout(timeout);
+    if (requestId === availabilityRequest) grid.removeAttribute('aria-busy');
+  }
 }
 let appointmentValidationStarted = false;
 function validateAppointment(focusFirst = false) {
